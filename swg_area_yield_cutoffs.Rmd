@@ -1,0 +1,38 @@
+---
+title: "Switchgrass area in Iowa as a function of potential yields"
+author: "Elke Brandes"
+date: "Wednesday, September 28, 2016"
+output: html_document
+---
+We assume that it would be economically feasible to change the management of those subfield areas from row crops to switchgrass that have never exceeded a certain threshold yield in corn or soybean in any year of our period of interest, 2011-2014.
+
+This paper documents the area in Iowa (that was in corn and/or soybean between 2011 and 2014) that could be potentially managed in switchgrasss under the above assumption, based on the criteria
+
+- maximum yield in each year (corn and soybean)
+- minimum patch size
+- maximum distance of a patch below that minimum patch size to a larger patch
+
+Through spatial processing of the Iowa subfield layer, I have identified the patches eligible for switchgrass management under different yield threshold scenarios, and exported the results from ArcGIS into a csv file. The file shows the scenario criteria and the area that would be managed in switchgrass under each scenario, as total area (ha) and relative area (% of total area in corn and soybean).
+
+Here I visualize the outcomes of the different scenarios.
+1. I changed only the maximum yields, simultaneously for corn and soybean, keeping the minimum patch size constant at 1 ha (10,000 m2) and the maximum distance at 20m.
+
+Reading in the csv file:
+
+```{r}
+yield_areas <- read.table("swg_areas_results.csv", header = TRUE, sep = ",")
+yield_areas
+```
+
+Plotting total area vs. maximum yield:
+
+```{r}
+plot(yield_areas$corn_yield_cutoff, yield_areas$swg_area * 0.000001, main = "Areas in switchgrass as a function of maximum row crop yield", xlab = "Corn yield cut-off (kg/ha)", ylab = "Area in Switchgrass (Mha)")
+```
+
+Plotting relative area vs. maximum yield:
+```{r}
+plot(yield_areas$corn_yield_cutoff, yield_areas$swg_area_percent, main = "Areas in switchgrass as a function of maximum row crop yield", xlab = "Corn yield cut-off (kg/ha)", ylab = "Area in Switchgrass (% of total in row crop)")
+```
+
+2. I could do the same with changing patch size and distance cut off values, that I have kept constant in the above analysis.
