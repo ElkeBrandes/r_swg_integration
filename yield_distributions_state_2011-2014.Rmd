@@ -1,0 +1,117 @@
+---
+title: "Corn and soybean yield distributions 2011-2014"
+author: "Elke Brandes"
+date: "Thursday, September 29, 2016"
+output: html_document
+---
+
+This paper documents the process of graphically displaying yield distributions, separately for corn and soybean, in the years 2011-2014. I am starting with a list of txt files that I have previously queried in the isuag postgreSQL database and exported to my directory on the [Heaton lab shared drive](.).
+
+First I create a list of the txt files I want to read in:
+```{r}
+file_list <- list.files(".", pattern = '*_yield_aggregated1*')
+file_list
+```
+
+Then I read in the data of all txt files in the list, and delete the last row of each of the data frames, because this row sums up the area that is in the respective other crop.
+```{r}
+data_list_1 <- lapply(file_list, FUN=read.table, header = TRUE)
+data_list <- lapply(data_list_1, function(x) x[-nrow(x),])
+names(data_list) <- c("corn11", "corn12", "corn13", "corn14", "soy11", "soy12", "soy13", "soy14")
+```
+
+To check the yield values, I calculate the weighted mean for each crop in each year. The list below shows the mean values for corn (2011-2014) followed by soybean (2011-2014). For 2011-2013, these are comparable with the mean yields published in Brandes et al 2016.
+```{r}
+means_list <- lapply(data_list, function(x) round(weighted.mean(x[,1],x[,2]),digits=2))
+means_vector <- unlist(means_list)
+means_vector
+```
+
+To check total areas, I calculate the sums in corn and soybean in each year. 
+```{r}
+total_areas_list <- lapply(data_list, function(x) round(sum(x[,2]),digits=2))
+total_areas_vector_cb <- unlist(total_areas_list, recursive = TRUE, use.names = TRUE)
+total_areas_vector <- c(total_areas_vector_cb[1]+total_areas_vector_cb[5], 
+                        total_areas_vector_cb[2]+total_areas_vector_cb[6], 
+                        total_areas_vector_cb[3]+total_areas_vector_cb[7], 
+                        total_areas_vector_cb[4]+total_areas_vector_cb[8])
+total_areas_vector  
+```
+
+The function summary() gives some statistics:
+```{r}
+sapply(data_list, function(x) summary(x))
+```
+
+Packages needed for the plots:
+```{r}
+library("ggplot2")
+library("gridGraphics") # needed for the function unit
+```
+
+I am using a modified theme for ggplot that has black border, white background, and inward facing tick marks:
+```{r}
+theme_b_border_inward <- function (base_size = 12, base_family = "") 
+{
+  theme_grey(base_size = base_size, base_family = base_family) %+replace% 
+    theme(
+      axis.text = element_text(size = rel(0.8)), 
+      axis.ticks = element_line(colour = "black"),
+          axis.ticks.length=unit(-0.15, "cm"),
+      axis.ticks.margin=unit(0.5, "cm"),
+          legend.key = element_rect(colour = NA), panel.background = element_rect(fill = "white", 
+           colour = NA), panel.border = element_rect(fill = NA, 
+           colour = "black"), panel.grid.major = element_line(colour = NA, 
+           size = 0.2), panel.grid.minor = element_line(colour = NA, 
+           size = 0.5), strip.background = element_rect(fill = "grey80", 
+           colour = "grey50", size = 0.2))
+}
+```
+
+I prepare a data frame to be used for the facet plot:
+```{r}
+yield <- vector(mode="numeric", length=0)
+ for (i in seq(data_list))
+   yield <- append(yield, data_list[[i]][,1])
+  
+area <- vector(mode="numeric", length=0)
+ for (i in seq(data_list))
+   area <- append(area, data_list[[i]][,2])
+
+   
+yields_2011_2014 <- data.frame(year = c(rep("2011", sapply(data_list[1],nrow)), rep("2012", sapply(data_list[2],nrow)), 
+                                        rep("2013", sapply(data_list[3],nrow)), rep("2014", sapply(data_list[4],nrow)),
+                                        rep("2011", sapply(data_list[5],nrow)), rep("2012", sapply(data_list[6],nrow)), 
+                                        rep("2013", sapply(data_list[7],nrow)), rep("2014", sapply(data_list[8],nrow))),
+                                 crop = c(rep("corn", sum(sapply(data_list[1:4],nrow))), rep("soy", sum(sapply(data_list[5:8],nrow)))), 
+                                 yield,                             
+                                 area = area*1e-6) # this factor to show Mha
+
+head(yields_2011_2014)
+sum(yields_2011_2014$year == "2011", 4)
+```
+
+Then I plot the distributions:
+```{r}
+cuts <- data.frame(crop_cut = c("Soybean", "Soybean", "Maize", "Maize"), cut = c(2.5,3.25,8,9.5))
+
+
+hi_yield <- ggplot(yields_2011_2014, aes(yield, weight = area, fill=crop)) + 
+  geom_histogram(binwidth=.2, alpha = .5, position="identity") +
+  theme_b_border_inward() +
+#  ylim(0,1500000) + xlim(-1500,1800) +
+ scale_x_continuous(name="Yield [Mg/ha]") +
+  scale_y_continuous(name="Area [Mha]") +
+  theme(legend.position="bottom") +
+  facet_wrap( ~ year, ncol=2) 
+
+hi_yield +
+  scale_fill_manual(values=c("#E69F00", "#56B4E9"), name="", labels=c("Maize","Soybean")) +
+  geom_vline(data= cuts, aes(xintercept= cut, linetype = crop_cut),  show_guide = FALSE) 
+
+```
+
+The dashed lines show the exemplary cut off yields of 2.5 and 3.25 Mg/ha (37 and 48 bu/ac) for soybean, and the solid lines show the cut off yields of 8 and 9.5 Mg/ha (127 and 151 bu/ac) for corn.
+
+
+(Working with lists: try out purrr package)
