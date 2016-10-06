@@ -5,6 +5,11 @@ date: "Wednesday, October 05, 2016"
 output: html_document
 ---
 
+**WARNING:**
+This script is of limited usefulness, since it gives not much more information than is already available from NASS county mean yield data for 2011-2014. It would be better to improve this script by plotting a histogram for each county and year (or a histogram for each county, showing all four years and two crops) to determine how much area would be affected by a given cut off yield.
+But that might be even shown by just plotting the areas affected in each county.
+
+
 This paper documents the process of graphically displaying yield distributions per county, separately for corn and soybean, in the years 2011-2014. I am starting with a list of txt files that I have previously queried in the isuag postgreSQL database and exported to my directory on the [Heaton lab shared drive](.).
 
 First I create a list of the txt files I want to read in:
@@ -14,10 +19,10 @@ file_list <- list.files(".", pattern = '*_yield_cnty_aggr1*')
 file_list
 ```
 
-Then I read in the data of all txt files in the list, and delete the last row of each of the data frames, because this row sums up the area that is in the respective other crop.
+Then I read in the data of all txt files in the list, and delete all rows that contain NA in the yield column, because these rows sum up the area that is in the respective other crop in each county.
 ```{r}
 data_list_1 <- lapply(file_list, FUN=read.table, header = TRUE)
-data_list <- lapply(data_list_1, function(x) x[-nrow(x),])
+data_list <- lapply(data_list_1, function(x) x[-which(is.na(x[,3])),])
 names(data_list) <- c("corn11", "corn12", "corn13", "corn14", "soy11", "soy12", "soy13", "soy14")
 ```
 
@@ -70,18 +75,23 @@ theme_b_border_inward <- function (base_size = 12, base_family = "")
 }
 ```
 
-I prepare a data frame to be used for the facet plot:
+I prepare a data frame to be used for the plot:
 ```{r}
+county <- vector(mode = "character", length = 0)
+for (i in seq(data_list))
+  county <- append(county, as.character(data_list[[i]][,1]))
+  
 yield <- vector(mode="numeric", length=0)
  for (i in seq(data_list))
-   yield <- append(yield, data_list[[i]][,1])
+   yield <- append(yield, data_list[[i]][,3])
   
 area <- vector(mode="numeric", length=0)
  for (i in seq(data_list))
    area <- append(area, data_list[[i]][,2])
 
    
-yields_2011_2014 <- data.frame(year = c(rep("2011", sapply(data_list[1],nrow)), rep("2012", sapply(data_list[2],nrow)), 
+yields_cnty_2011_2014 <- data.frame(county,
+                                  year = c(rep("2011", sapply(data_list[1],nrow)), rep("2012", sapply(data_list[2],nrow)), 
                                         rep("2013", sapply(data_list[3],nrow)), rep("2014", sapply(data_list[4],nrow)),
                                         rep("2011", sapply(data_list[5],nrow)), rep("2012", sapply(data_list[6],nrow)), 
                                         rep("2013", sapply(data_list[7],nrow)), rep("2014", sapply(data_list[8],nrow))),
@@ -89,31 +99,26 @@ yields_2011_2014 <- data.frame(year = c(rep("2011", sapply(data_list[1],nrow)), 
                                  yield,                             
                                  area = area*1e-6) # this factor to show Mha
 
-head(yields_2011_2014)
-sum(yields_2011_2014$year == "2011", 4)
+head(yields_cnty_2011_2014)
 ```
 
-Then I plot the distributions:
+Then I plot the distributions as a boxplot:
 ```{r}
-cuts <- data.frame(crop_cut = c("Soybean", "Soybean", "Maize", "Maize"), cut = c(2.5,3.25,8,9.5))
 
 
-hi_yield <- ggplot(yields_2011_2014, aes(yield, weight = area, fill=crop)) + 
-  geom_histogram(binwidth=.2, alpha = .5, position="identity") +
+box_yield <- ggplot(yields_cnty_2011_2014, aes(x=county, y = yield, fill=crop)) + 
+  geom_boxplot() +
   theme_b_border_inward() +
 #  ylim(0,1500000) + xlim(-1500,1800) +
- scale_x_continuous(name="Yield [Mg/ha]") +
+# scale_x_continuous(name="Yield [Mg/ha]") +
   scale_y_continuous(name="Area [Mha]") +
-  theme(legend.position="bottom") +
+#  theme(legend.position="bottom") +
+  coord_flip() +
   facet_wrap( ~ year, ncol=2) 
 
-hi_yield +
-  scale_fill_manual(values=c("#E69F00", "#56B4E9"), name="", labels=c("Maize","Soybean")) +
-  geom_vline(data= cuts, aes(xintercept= cut, linetype = crop_cut),  show_guide = FALSE) 
+box_yield +
+  scale_fill_manual(values=c("#E69F00", "#56B4E9"), name="", labels=c("Maize","Soybean"))
+
 
 ```
 
-The dashed lines show the exemplary cut off yields of 2.5 and 3.25 Mg/ha (37 and 48 bu/ac) for soybean, and the solid lines show the cut off yields of 8 and 9.5 Mg/ha (127 and 151 bu/ac) for corn.
-
-
-(Working with lists: try out purrr package)
