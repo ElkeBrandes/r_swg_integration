@@ -5,18 +5,42 @@ date: "Thursday, October 06, 2016"
 output: html_document
 ---
 
-Training 
+**Training**
 
+First, I installed the arcgisbinding package in ArcGIS. It can be found in [this githup repo](https://github.com/R-ArcGIS/r-bridge-install).
 
-
+Because I am running the ArcGIS Desktop 32 bit version, I also need to run the 32 but R version. I have installed both 64 and 32 bit version, so I need to change to the 32 bit version in **Tools -> Global Options**, under the General tab. I can check the version of R by typing the following:
 ```{r}
-summary(cars)
+Sys.getenv("R_ARCH")
 ```
 
-You can also embed plots, for example:
-
-```{r, echo=FALSE}
-plot(cars)
+Then, I load the package that has been installed in RStudio, `arcgisbinding`:
+```{r}
+library(sp)
+library(arcgisbinding)
+arc.check_product()
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+Read in a feature class using `arc.open()`
+```{r}
+input_fc <- "C:/Users/ebrandes/Documents/DNDC/switchgrass_integration.gdb/Townships_Projected"
+twp_raw <- arc.open(input_fc)
+class(twp_raw)
+twp_raw
+```
+
+Now I can look at the attributes in the feature class twp:
+```{r}
+twp_fields <- c('area', 'politwp_id', 'twp_name', 'type', 'co_number', 'co_name')
+twp <- arc.select(twp_raw, fields = twp_fields)
+head(twp)
+```
+`twp` looks like a normal data frame, but it includes the spatial attribute component of the feature class.
+
+I can also create an sp object using `arc.data2sp()` function:
+```{r}
+twp_sp <- arc.data2sp(twp)
+spplot(twp_sp[,3])
+```
+
