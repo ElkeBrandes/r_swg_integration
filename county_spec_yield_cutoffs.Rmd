@@ -1,0 +1,146 @@
+---
+title: "Areas in switchgrass, applying a county specific yield threshold"
+author: "Elke Brandes"
+date: "November 11, 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+As preparation for a switchgrass integration economic analysis, it is assumed that switchgrass will be integrated in those subfield areas most unfavorable for corn and soybean. We defined these unfavorable conditions by yields estimated for corn and soybeans from 2012-2015. Subfield areas that fell below a certain yield threshold in each year are subject to a management change from row crops to switchgrass.
+Since average corn and soybean yields vary substantially between counties (or cropping districts), we set yield threshold specifically for each county, according to the yield history.
+
+We are applying four county-specific yield thresholds (for corn and soybean individually):
+
+1. The lowest reported county average yields from 2000-2015
+2. The 2nd lowest reported county average yields from 2000-2015
+3. The lowest reported county average yields from 2010-2015
+4. The 2nd lowest reported county average yields from 2010-2015
+
+In all scenarios, small subfield areas of less than 1 ha are excluded, unless they are located in a distance of 20 m or less to a larger area in switchgrass.
+
+```{r packages, message = FALSE}
+
+library('RPostgreSQL') # PostgreSQL database connection
+library("ggplot2") # for the figures
+library("maps") # to plot maps, contains country/state/county outlines
+library("gridGraphics") # needed for the function unit in ggplot
+library("tidyverse") # to make tidy tables, includes dplyr needed for PostgreSQL database connection
+library('knitr') # to use kable() function
+
+library(rgdal) # to read in shape files
+library(ggmap)
+library(scales)
+library(RColorBrewer)
+library("sp") # to use merge with a spatial data frame
+
+library("tmap")
+```
+
+```{r connect_dplyr, message=FALSE}
+
+pw <- {
+  "5QUXJHTbxj"
+}
+isuag_db <- src_postgres(dbname = 'isuag',
+                           host = 'isu-ag-db.agsolver.com',
+                           port = 5432,
+                           user = 'isuag',
+                           password = pw)
+
+```
+
+### State-wide area in switchgrass under the four scenarios
+
+```{r state_areas}
+yield_areas <- read.table("swg_areas_results.csv", header = TRUE, sep = ",", row.names = NULL)
+names(yield_areas) <- c("Yield Scenario", "Years", "Max. Area (m2)", "Max. Distance (m)", "Area in Swg (ha)", "Area in Swg (%)")
+kable(yield_areas)
+```
+
+### Areas in switchgrass per county
+
+```{r read_in, warning = FALSE, message = FALSE, include=FALSE}
+counties <- readOGR(dsn="Z:/ElkeBrandes/projects/01 subfield profit/data analysis/02 GIS/government_units/iowa_cnty/IA_cnty/county.shp",layer="county")
+
+counties_swg_df = tbl(isuag_db, "12_swg_areas_county") %>%
+   as.data.frame()
+# change the data in the column named "FIPS", so that is contains the county identifiers in the same format as the spatial file:
+ for (i in 1:length(counties_swg_df$FIPS)) {
+   counties_swg_df$FIPS[i] <- sub("IA", "19", counties_swg_df$FIPS[i])
+    }
+head(counties_swg_df, n = 2)
+
+
+# make variable "FIPS" a factor
+counties_swg_df$FIPS <- as.factor(counties_swg_df$FIPS)
+
+# join the attribute data with the spatial data, using a left join and the identifier "FIPS":
+counties@data <- left_join(counties@data, counties_swg_df, by = "FIPS")
+
+# make it a data frame and then join the attributes of the spatial data frame again
+counties_df <- fortify(counties)
+head(counties_df, n = 2)
+counties$id <- row.names(counties) # assign a column with the variable ID that is equal to the row names (=numbers), starting with 0.
+
+# create a 'tall' data frame from counties@data
+
+counties_swg_areas <- data.frame(id = rep(counties$id,4),
+                                 scenario = factor(rep(c("min_16", "2nd_16", "min_6", "2nd_6"), each = length(counties$id),levels = c("min_16", "2nd_16", "min_6", "2nd_6"))),
+                                 tot_area = rep(counties$total_ha, 4),
+                                 area_abs = c(counties$in_swg_min_16, counties$in_swg_2nd_16, counties$in_swg_min_6, counties$in_swg_2nd_6),
+                                area_rel = c(counties$in_swg_min_16 *100 / counties$total_ha, counties$in_swg_2nd_16 *100 / counties$total_ha, counties$in_swg_min_6 *100 / counties$total_ha, counties$in_swg_2nd_6 *100 / counties$total_ha))
+                                                       
+head(counties_swg_areas, n = 4)
+
+
+
+
+
+counties_swg_join <- left_join(counties_df, counties_swg_areas)
+
+
+# add a spatial data frame with the county centroids, to be used to plot the total leaching N per county:
+centroids <- getSpPPolygonsLabptSlots(counties) %>%
+  as.data.frame() 
+centroids$id <- as.character(0:98)
+
+# join the total N leaching data to the centroids 
+counties_swg_join <- left_join(counties_swg_join, centroids)
+
+head(counties_swg_join, n = 2)
+
+```
+
+```{r maps_areas, fig.width=9.5, fig.height=6, warning = FALSE, fig.cap="Figure 1: Absolute and relative area in switchgrass per county, for the four scenarios."}
+
+# create a theme without axes:
+ditch_the_axes <- theme(
+  axis.text = element_blank(),
+  axis.line = element_blank(),
+  axis.ticks = element_blank(),
+  panel.border = element_blank(),
+  panel.grid = element_blank(),
+  axis.title = element_blank()
+  )
+
+cuts <- c('min_16' = "Lowest yield 2000-2015", '2nd_16' = "2nd lowest yield 2000-2015", 'min_6' = "Lowest yield 2010-2015", '2nd_6' = "2nd lowest yield 2010-2015")
+
+ggplot(counties_swg_join) +
+  geom_polygon(aes(long, lat, group = group, fill=area_rel), color = "white") +
+  scale_fill_gradient(low = "white", high="dark blue", guide = "colourbar") +  
+  labs(fill = "Area in switchgrass (%)") +  
+  geom_point(aes(V1, V2, size = area_abs), color = "orange") +
+  labs(size = "Area in switchgrass (ha)") +
+  scale_size(range = c(0, 4), limits = c(1, 67000)) +
+  coord_equal() +
+  ditch_the_axes +
+  facet_wrap( ~ scenario, ncol = 2, labeller = as_labeller(cuts)) +
+  ggtitle("Area in switchgrass under different yield threshold scenarios")
+```
+
+
+
+
